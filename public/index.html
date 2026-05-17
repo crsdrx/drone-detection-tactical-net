@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Second Brain</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: sans-serif; background: #1a1a1a; color: #fff; }
+    header { text-align: center; padding: 40px; border-bottom: 2px solid #4dd0e1; }
+    nav { padding: 20px; background: #2a2a2a; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    button { padding: 10px 20px; background: #4dd0e1; color: #000; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; }
+    button.active { background: #26c6da; }
+    .page { display: none; padding: 20px; }
+    .page.active { display: block; }
+    .panel { background: #2a2a2a; padding: 20px; border-radius: 8px; margin: 20px auto; max-width: 1000px; }
+    input, textarea, select { width: 100%; padding: 10px; margin: 10px 0; background: #1a1a1a; border: 1px solid #333; color: #fff; border-radius: 4px; font-family: inherit; }
+    .chat-box { height: 400px; overflow-y: auto; background: #1a1a1a; padding: 10px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #333; }
+    .chat-msg { margin: 10px 0; padding: 10px; background: #2a2a2a; border-radius: 4px; }
+    .user { border-left: 3px solid #4dd0e1; }
+    .bot { border-left: 3px solid #ff9800; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🧠 Second Brain</h1>
+    <p>Your AI-powered knowledge management system</p>
+  </header>
+
+  <nav>
+    <button class="tab-btn active" data-tab="notes">📝 Notes</button>
+    <button class="tab-btn" data-tab="research">📚 Research</button>
+    <button class="tab-btn" data-tab="tasks">✅ Tasks</button>
+    <button class="tab-btn" data-tab="chat">💬 Chat</button>
+  </nav>
+
+  <div id="notes" class="page active">
+    <div class="panel">
+      <h2>Add Note</h2>
+      <input type="text" id="note-title" placeholder="Title...">
+      <textarea id="note-content" placeholder="Content..." style="height:100px;"></textarea>
+      <input type="text" id="note-tags" placeholder="Tags (comma separated)">
+      <button onclick="addNote()">Save Note</button>
+    </div>
+    <div class="panel" id="notes-list"></div>
+  </div>
+
+  <div id="research" class="page">
+    <div class="panel">
+      <h2>Add Resource</h2>
+      <input type="text" id="res-url" placeholder="URL...">
+      <input type="text" id="res-title" placeholder="Title...">
+      <select id="res-type"><option>Article</option><option>Paper</option><option>Book</option></select>
+      <input type="text" id="res-topic" placeholder="Topic...">
+      <textarea id="res-notes" placeholder="Notes..." style="height:80px;"></textarea>
+      <button onclick="addResource()">Add Resource</button>
+    </div>
+    <div class="panel" id="research-list"></div>
+  </div>
+
+  <div id="tasks" class="page">
+    <div class="panel">
+      <h2>Tasks</h2>
+      <input type="text" id="task-input" placeholder="Add task...">
+      <button onclick="addTask()">Add Task</button>
+      <div id="tasks-list" style="margin-top: 20px;"></div>
+    </div>
+  </div>
+
+  <div id="chat" class="page">
+    <div class="panel">
+      <h2>AI Chat</h2>
+      <div class="chat-box" id="chat-box"></div>
+      <input type="text" id="chat-input" placeholder="Ask me anything...">
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <script>
+const API = 'http://127.0.0.1:5000/api';
+let notes = JSON.parse(localStorage.getItem('notes')) || [];
+let research = JSON.parse(localStorage.getItem('research')) || [];
+let tasks = [];
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    e.target.classList.add('active');
+    document.getElementById(e.target.dataset.tab).classList.add('active');
+  });
+});
+
+document.getElementById('chat-input')?.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') sendMessage();
+});
+
+function addNote() {
+  const title = document.getElementById('note-title').value;
+  const content = document.getElementById('note-content').value;
+  if (!title || !content) return alert('Title and content required');
+  notes.push({ id: Date.now(), title, content, tags: document.getElementById('note-tags').value.split(',').map(t => t.trim()), created: new Date().toLocaleString() });
+  localStorage.setItem('notes', JSON.stringify(notes));
+  document.getElementById('note-title').value = '';
+  document.getElementById('note-content').value = '';
+  document.getElementById('note-tags').value = '';
+  renderNotes();
+}
+
+function addResource() {
+  const url = document.getElementById('res-url').value;
+  const title = document.getElementById('res-title').value;
+  if (!url || !title) return alert('URL and title required');
+  research.push({ id: Date.now(), url, title, type: document.getElementById('res-type').value, topic: document.getElementById('res-topic').value, notes: document.getElementById('res-notes').value, saved: new Date().toLocaleString() });
+  localStorage.setItem('research', JSON.stringify(research));
+  document.getElementById('res-url').value = '';
+  document.getElementById('res-title').value = '';
+  document.getElementById('res-topic').value = '';
+  document.getElementById('res-notes').value = '';
+  renderResearch();
+}
+
+async function addTask() {
+  const input = document.getElementById('task-input').value;
+  if (!input) return;
+  try {
+    const res = await fetch(`${API}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: input, completed: false }) });
+    const data = await res.json();
+    tasks.push(data);
+    document.getElementById('task-input').value = '';
+    renderTasks();
+  } catch (e) { console.error(e); }
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input').value;
+  if (!input) return;
+  addChatMessage(input, 'user');
+  document.getElementById('chat-input').value = '';
+  try {
+    const res = await fetch(`${API}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: input }) });
+    const data = await res.json();
+    addChatMessage(data.response, 'bot');
+  } catch (e) {
+    addChatMessage('Error connecting to AI', 'bot');
+  }
+}
+
+function addChatMessage(text, role) {
+  const box = document.getElementById('chat-box');
+  const msg = document.createElement('div');
+  msg.className = `chat-msg ${role}`;
+  msg.textContent = text;
+  box.appendChild(msg);
+  box.scrollTop = box.scrollHeight;
+}
+
+function renderNotes() {
+  document.getElementById('notes-list').innerHTML = notes.map(n => `<div style="background: #1a1a1a; padding: 10px; margin: 10px 0; border-left: 3px solid #4dd0e1;"><strong>${n.title}</strong><p style="font-size: 0.9em; color: #888;">${n.created}</p><p>${n.content.substring(0, 100)}</p><button onclick="deleteNote(${n.id})" style="background: #ff6b6b;">Delete</button></div>`).join('') || '<p>No notes</p>';
+}
+
+function renderResearch() {
+  const byTopic = {};
+  research.forEach(r => { if (!byTopic[r.topic]) byTopic[r.topic] = []; byTopic[r.topic].push(r); });
+  document.getElementById('research-list').innerHTML = Object.entries(byTopic).map(([topic, items]) => `<h3 style="color: #4dd0e1;">${topic} (${items.length})</h3>${items.map(r => `<div style="background: #1a1a1a; padding: 10px; margin: 10px 0;"><a href="${r.url}" target="_blank" style="color: #4dd0e1;"><strong>${r.title}</strong></a><button onclick="deleteResource(${r.id})" style="background: #ff6b6b;">Delete</button></div>`).join('')}`).join('') || '<p>No resources</p>';
+}
+
+function renderTasks() {
+  document.getElementById('tasks-list').innerHTML = tasks.map(t => `<div style="background: #1a1a1a; padding: 10px; margin: 10px 0;">${t.title}<button onclick="deleteTask(${t.id})" style="background: #ff6b6b;">Delete</button></div>`).join('') || '<p>No tasks</p>';
+}
+
+function deleteNote(id) { notes = notes.filter(n => n.id !== id); localStorage.setItem('notes', JSON.stringify(notes)); renderNotes(); }
+function deleteResource(id) { research = research.filter(r => r.id !== id); localStorage.setItem('research', JSON.stringify(research)); renderResearch(); }
+async function deleteTask(id) { await fetch(`${API}/tasks/${id}`, { method: 'DELETE' }); tasks = tasks.filter(t => t.id !== id); renderTasks(); }
+
+renderNotes();
+renderResearch();
+  </script>
+</body>
+</html>
